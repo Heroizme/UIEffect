@@ -17,57 +17,61 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     concurrency:
       group: "pages"
       cancel-in-progress: true
 
     steps:
+      # 1. Checkout（必要时）
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # 2. 确定要使用的 Release Tag
       - name: Determine release tag
         id: get_tag
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
-            echo "event is release; using github.event.release.tag_name"
             TAG="${{ github.event.release.tag_name }}"
           else
-            echo "event is workflow_dispatch; using input tag"
             TAG="${{ github.event.inputs.tag }}"
           fi
           if [ -z "$TAG" ]; then
-            echo "::error ::Release tag is empty. Please check trigger source or inputs."
+            echo "::error ::Release tag is empty."
             exit 1
           fi
-          echo "Using tag=$TAG"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      - name: Download release ZIP via gh
+      # 3. 下载指定的 ZIP 资产（WebGL_Demo.zip）
+      - name: Download WebGL_Demo.zip via gh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p releases
-          gh release download "$TAG" \
+          gh release download "${{ steps.get_tag.outputs.tag }}" \
             --repo "${GITHUB_REPOSITORY}" \
             --pattern "WebGL_Demo.zip" \
             --dir releases
 
+      # 4. 解压到 output 目录
       - name: Extract site content
         run: |
           mkdir output
           unzip -q releases/WebGL_Demo.zip -d output
 
+      # 5. 禁用 Jekyll 处理
       - name: Disable Jekyll processing
         run: echo '' > output/.nojekyll
 
+      # 6. 配置 GitHub Pages
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      # 7. 上传 Pages 工件
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: output
 
+      # 8. 部署到 GitHub Pages
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
