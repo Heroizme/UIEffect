@@ -1,55 +1,61 @@
 name: 🚀 Deploy GitHub Pages from Release ZIP
 
-# 1. 在 release 发布时触发
 on:
   release:
     types: [published]
-  workflow_dispatch:         # 可手动触发
+    workflow_dispatch:         # 可手动触发
 
 permissions:
-  contents: read    # 读取仓库内容
-  pages: write      # 推送到 Pages
-  id-token: write   # 用于 OIDC 身份验证
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # 并发设置，避免重复部署冲突
     concurrency:
       group: "pages"
       cancel-in-progress: true
 
     steps:
-      # 下载 Release ZIP 资产
-      - name: Download release ZIP
-        uses: dawidd6/action-download-release-asset@v2
-        with:
-          repository: ${{ github.repository }}
-          tag: ${{ github.event.release.tag_name }}
-          asset_name: WebGL_Demo.zip       # 根据实际 ZIP 名称调整
-          download_path: ./releases
+      # 1. Checkout（可选，如果需要读取仓库文件）
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      # 解压 ZIP 到 output 目录
+      # 2. 使用 GitHub CLI 下载 Release ZIP 资产
+      - name: Download release ZIP via gh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p releases
+          # 提取 Tag 名称（refs/tags/v1.0.0 → v1.0.0）
+          TAG=${GITHUB_REF#refs/tags/}
+          gh release download "$TAG" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "WebGL_Demo.zip" \
+            --dir releases
+
+      # 3. 解压到 output 目录
       - name: Extract site content
         run: |
           mkdir output
-          unzip -q ./releases/site.zip -d output
+          unzip -q releases/site.zip -d output
 
-      # 禁用 Jekyll 处理：添加 .nojekyll 文件
+      # 4. 禁用 Jekyll 处理
       - name: Disable Jekyll processing
         run: echo '' > output/.nojekyll
 
-      # 配置 GitHub Pages（启用 Actions 作为发布源）
+      # 5. 配置 GitHub Pages
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      # 上传解压后的静态文件，作为发布工件
+      # 6. 上传 Pages 工件
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: output
 
-      # 部署到 GitHub Pages
+      # 7. 部署到 GitHub Pages
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
