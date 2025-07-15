@@ -1,11 +1,13 @@
 name: 🚀 Deploy GitHub Pages from Release ZIP
 
 on:
-  # 自动触发：当发布新的 Release 时
   release:
     types: [published]
-  # 手动触发：在 Actions 界面里点击 “Run workflow”
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to deploy (e.g. v1.0.0)'
+        required: true
 
 permissions:
   contents: read
@@ -21,47 +23,51 @@ jobs:
       cancel-in-progress: true
 
     steps:
-      # 1. Checkout（可选，如果需要读取仓库文件）
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2. 使用 GitHub CLI 下载 Release ZIP 资产
+      - name: Determine release tag
+        id: get_tag
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            echo "event is release; using github.event.release.tag_name"
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            echo "event is workflow_dispatch; using input tag"
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "::error ::Release tag is empty. Please check trigger source or inputs."
+            exit 1
+          fi
+          echo "Using tag=$TAG"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
       - name: Download release ZIP via gh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p releases
-          TAG=${GITHUB_REF#refs/tags/}
-          # 如果是手动触发，GITHUB_REF 可能不是 tag，使用默认 tag 或传参逻辑
-          if [ -z "$TAG" ] || [ "$TAG" = " " ]; then
-            echo "No tag found in GITHUB_REF, please set TAG manually when dispatching."
-            exit 1
-          fi
           gh release download "$TAG" \
             --repo "${GITHUB_REPOSITORY}" \
             --pattern "WebGL_Demo.zip" \
             --dir releases
 
-      # 3. 解压到 output 目录
       - name: Extract site content
         run: |
           mkdir output
-          unzip -q releases/site.zip -d output
+          unzip -q releases/WebGL_Demo.zip -d output
 
-      # 4. 禁用 Jekyll 处理
       - name: Disable Jekyll processing
         run: echo '' > output/.nojekyll
 
-      # 5. 配置 GitHub Pages
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      # 6. 上传 Pages 工件
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: output
 
-      # 7. 部署到 GitHub Pages
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
