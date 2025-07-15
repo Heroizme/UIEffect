@@ -1,17 +1,23 @@
 name: 🚀 Deploy GitHub Pages from Release ZIP
 
-# 在 release 发布时触发
+# 1. 在 release 发布时触发
 on:
   release:
     types: [published]
 
+permissions:
+  contents: read    # 读取仓库内容
+  pages: write      # 推送到 Pages
+  id-token: write   # 用于 OIDC 身份验证
+
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read          # 读取仓库内容
-      pages: write            # 推送到 Pages
-      id-token: write         # 用于 OIDC 身份验证
+
+    # 并发设置，避免重复部署冲突
+    concurrency:
+      group: "pages"
+      cancel-in-progress: true
 
     steps:
       # 下载 Release ZIP 资产
@@ -20,7 +26,7 @@ jobs:
         with:
           repository: ${{ github.repository }}
           tag: ${{ github.event.release.tag_name }}
-          asset_name: WebGL_Demo.zip          # 你在 Release 上传的 ZIP 名称
+          asset_name: WebGL_Demo.zip       # 根据实际 ZIP 名称调整
           download_path: ./releases
 
       # 解压 ZIP 到 output 目录
@@ -29,16 +35,20 @@ jobs:
           mkdir output
           unzip -q ./releases/site.zip -d output
 
-      # 必须先配置 Pages 环境（设置部署分支、文件夹等）
-      - name: Configure Pages
-        uses: actions/configure-pages@v3
+      # 禁用 Jekyll 处理：添加 .nojekyll 文件
+      - name: Disable Jekyll processing
+        run: echo '' > output/.nojekyll
 
-      # 上传解压后的静态文件，作为后续部署的数据源
+      # 配置 GitHub Pages（启用 Actions 作为发布源）
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # 上传解压后的静态文件，作为发布工件
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: output
 
       # 部署到 GitHub Pages
       - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v1
+        uses: actions/deploy-pages@v4
