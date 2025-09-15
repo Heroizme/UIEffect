@@ -7,16 +7,47 @@ jobs:
   fork-to-independent:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout 当前 fork 仓库
+      # 1. Checkout 当前仓库
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 获取完整历史和 tag
 
-      # 2. Push 到新仓库
+      # 2. 设置 Git 用户信息
+      - name: Set Git config
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@users.noreply.github.com"
+
+      # 3. 构造新仓库名
+      - name: Set new repository name
+        id: vars
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY##*/}-fork"
+          echo "NEW_REPO_NAME=$REPO_NAME" >> $GITHUB_ENV
+
+      # 4. 创建新仓库（使用 GitHub CLI，需要在 secrets 中配置 PAT）
+      - name: Create new repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          gh auth login --with-token <<< "$GITHUB_TOKEN"
+          gh repo create ${{ github.repository_owner }}/$NEW_REPO_NAME --private --confirm
+
+      # 5. 推送到新仓库（包括 tags 和所有分支）
       - name: Push to new repository
         env:
-          NEW_REPO: https://github.com/你的用户名/新仓库名.git
+          NEW_REPO: https://github.com/${{ github.repository_owner }}/$NEW_REPO_NAME.git
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
           git remote remove origin
           git remote add origin $NEW_REPO
-          git push -u origin --all
-          git push -u origin --tags
+          git push --all --force
+          git push --tags --force
+
+      # 6. 迁移 Release
+      - name: Copy Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
