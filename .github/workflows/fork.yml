@@ -1,0 +1,22 @@
+name: Fork to Independent Repo
+
+on:
+  workflow_dispatch:  # 手动触发
+
+jobs:
+  fork-to-independent:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout 当前 fork 仓库
+      - uses: actions/checkout@v3
+
+      # 2. Push 到新仓库
+      - name: Push to new repository
+        env:
+          NEW_REPO: https://github.com/你的用户名/新仓库名.git
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          git remote remove origin
+          git remote add origin $NEW_REPO
+          git push -u origin --all
+          git push -u origin --tags
